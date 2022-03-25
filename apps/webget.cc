@@ -1,8 +1,13 @@
+#include "address.hh"
 #include "socket.hh"
 #include "util.hh"
 
 #include <cstdlib>
 #include <iostream>
+#include <iterator>
+#include <ostream>
+#include <string>
+#include <sys/socket.h>
 
 using namespace std;
 
@@ -16,9 +21,54 @@ void get_URL(const string &host, const string &path) {
     // Then you'll need to print out everything the server sends back,
     // (not just one call to read() -- everything) until you reach
     // the "eof" (end of file).
+    //!request path string do you know
+    //! connect host and request path
+    TCPSocket sock;
+    // cout << "pass" <<1 <<" with host and path "<< host << " " << path << endl;
+    Address addr(host,"http");
+    // cout << "pass" <<2 << endl;
+    sock.connect(Address(host,"http")); //!how to construct a addr for host    
 
-    cerr << "Function called: get_URL(" << host << ", " << path << ").\n";
-    cerr << "Warning: get_URL() has not been implemented yet.\n";
+    string end_str = "\r\n";
+    string command1 = "GET "+path+" HTTP/1.1"+end_str;
+    string command2 = "Host: "+host+end_str+end_str;//!two end_str here, fuck
+    sock.write(command1);
+    sock.write(command2);
+    sock.shutdown(SHUT_WR);
+    // cout <<"command 1 :"<<command1 << endl;
+    // cout <<"command 2 :"<<command2 << endl;
+    // cout << "pass" <<3 << endl;
+
+    while (!sock.eof()) {  
+        auto recvd = sock.read();
+
+        // cout << "pass" <<4 << endl;
+
+
+        // if (recvd == "eof" || recvd == "EOF") break;
+
+        // cout << "pass" <<5 << endl;
+
+
+        cout << recvd;
+
+
+        // int ending = -1;
+        // int begin = 0;
+        // while ((ending = recvd.find(end_str)) != static_cast<int>(string::npos))
+        // {
+        //     cout << recvd.substr(begin,ending - begin)<<ending;
+        //     begin = ending + end_str.size();
+        // }
+    }
+    
+    
+    sock.close();
+    // cerr << "Function called: get_URL(" << host << ", " << path << ").\n";
+
+
+    
+    // cerr << "Warning: get_URL() has not been implemented yet.\n";
 }
 
 int main(int argc, char *argv[]) {
