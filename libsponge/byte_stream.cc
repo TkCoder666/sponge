@@ -30,7 +30,6 @@ size_t ByteStream::write(const string &data) {
 
 //! \param[in] len bytes will be copied from the output side of the buffer
 string ByteStream::peek_output(const size_t len) const {
-    //TODO:deal with error here 
     string ans = "";
     size_t size = min(buffer_size(),len);
     auto it = _buffer.begin();
