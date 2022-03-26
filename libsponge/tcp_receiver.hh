@@ -6,6 +6,7 @@
 #include "tcp_segment.hh"
 #include "wrapping_integers.hh"
 
+#include <cstdint>
 #include <optional>
 
 //! \brief The "receiver" part of a TCP implementation.
@@ -19,7 +20,10 @@ class TCPReceiver {
 
     //! The maximum number of bytes we'll store.
     size_t _capacity;
-
+    bool _syn = false;
+    bool _fin = true; //TODOthis may be something wrong,do you know,do we really need it? that's a question.
+    uint32_t _isn = 0;
+    uint64_t _checkpoint = 0;
   public:
     //! \brief Construct a TCP receiver
     //!
@@ -54,6 +58,7 @@ class TCPReceiver {
     size_t unassembled_bytes() const { return _reassembler.unassembled_bytes(); }
 
     //! \brief handle an inbound segment
+    //! \returns `true` if any part of the segment was inside the window
     void segment_received(const TCPSegment &seg);
 
     //! \name "Output" interface for the reader
