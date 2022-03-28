@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <random>
 #include <utility>
-
+#include <iostream>
 // Dummy implementation of a TCP sender
 
 // For Lab 3, please replace with a real implementation that passes the
@@ -35,7 +35,8 @@ void TCPSender::fill_window() {
     TCPSegment seg;
     string pay_load;
     uint16_t bytes_for_sending = min(_window_size,static_cast<uint16_t>(TCPConfig::MAX_PAYLOAD_SIZE));
-    bytes_for_sending = max(bytes_for_sending,static_cast<uint16_t>(1));//TODO:deal window as 1 if it's 0
+    // bytes_for_sending = max(bytes_for_sending,static_cast<uint16_t>(1));//TODO:deal window as 1 if it's 0
+    
     if (next_seqno_absolute() == 0) {
         seg.header().syn = true;
         pay_load = _stream.read(bytes_for_sending-1); //!consider syn here
@@ -45,17 +46,26 @@ void TCPSender::fill_window() {
 
     seg.header().seqno = wrap(next_seqno_absolute(), _isn);
 
-    Buffer buffer(std::move(pay_load));
-    seg.parse(buffer);
-    if (_stream.input_ended() && seg.length_in_sequence_space() < bytes_for_sending){
+    // Buffer buffer(std::move(pay_load)); //!error how to init?
+
+    seg.payload() = Buffer(std::move(pay_load));
+
+    if (_stream.eof() && seg.length_in_sequence_space() < bytes_for_sending){
+        
         seg.header().fin = true;
     } 
+
+    cout << "the length is "<<seg.length_in_sequence_space()<<endl;
+    if (seg.length_in_sequence_space() == 0) 
+        return; 
+
     _next_seqno += seg.length_in_sequence_space();
     _bytes_in_flight += seg.length_in_sequence_space();
     _segments_out.push(seg);
     _outstanding_segs.push(seg);
+    _window_size -= seg.length_in_sequence_space();
     //TODO:set time with some flag here,do you know
-    _send_ms = 0;//!a flag?
+    _send_ms = 0;
     _timer_running = true;
 
 }
@@ -69,17 +79,24 @@ void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
     //!ackno next 
     //?acknowledges the successful receipt of new data
     bool ack_new_data = false;
+
+
     while (_outstanding_segs.front().header().seqno.raw_value()+_outstanding_segs.front().length_in_sequence_space() <= ackno.raw_value())
     {   
         ack_new_data = true;
-        
-        _bytes_in_flight -= _outstanding_segs.front().length_in_sequence_space();
+
+        _bytes_in_flight -= _outstanding_segs.front().length_in_sequence_space();//!nor right
 
         _outstanding_segs.pop();
         _rto = _initial_retransmission_timeout;
         if (_outstanding_segs.empty()) break;
     }
     
+    if (!_outstanding_segs.empty() && ackno.raw_value() > _outstanding_segs.front().header().seqno.raw_value())
+    {
+        _bytes_in_flight -= ackno.raw_value()-_outstanding_segs.front().header().seqno.raw_value();
+    }
+
     if (_outstanding_segs.empty() && ack_new_data) {
         _timer_running = false;
         _send_ms = 0;
