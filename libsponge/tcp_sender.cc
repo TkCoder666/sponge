@@ -32,6 +32,9 @@ uint64_t TCPSender::bytes_in_flight() const {
 }
 
 void TCPSender::fill_window() {
+
+    if (_finish) return;
+
     TCPSegment seg;
     string pay_load;
     uint16_t bytes_for_sending = min(_window_size,static_cast<uint16_t>(TCPConfig::MAX_PAYLOAD_SIZE));
@@ -40,6 +43,7 @@ void TCPSender::fill_window() {
     if (next_seqno_absolute() == 0) {
         seg.header().syn = true;
         pay_load = _stream.read(bytes_for_sending-1); //!consider syn here
+        _ackno = _isn.raw_value();//!init _ackno
     }else {
         pay_load = _stream.read(bytes_for_sending);    
     }
@@ -53,9 +57,10 @@ void TCPSender::fill_window() {
     if (_stream.eof() && seg.length_in_sequence_space() < bytes_for_sending){
         
         seg.header().fin = true;
+        _finish = true;
     } 
 
-    cout << "the length is "<<seg.length_in_sequence_space()<<endl;
+    // cout << "the length is "<<seg.length_in_sequence_space()<<endl;
     if (seg.length_in_sequence_space() == 0) 
         return; 
 
@@ -65,7 +70,6 @@ void TCPSender::fill_window() {
     _outstanding_segs.push(seg);
     _window_size -= seg.length_in_sequence_space();
     //TODO:set time with some flag here,do you know
-    _send_ms = 0;
     _timer_running = true;
 
 }
@@ -73,39 +77,43 @@ void TCPSender::fill_window() {
 //! \param ackno The remote receiver's ackno (acknowledgment number)
 //! \param window_size The remote receiver's advertised window size
 void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_size) { 
-    _ackno = ackno.raw_value();
-    _window_size = window_size;
+    
     //!here is to pop out outstanding data,do you know
     //!ackno next 
-    //?acknowledges the successful receipt of new data
-    bool ack_new_data = false;
+    //!using a flag to do so,do you know to judge eof
+    if (ackno.raw_value() > wrap(next_seqno_absolute(), _isn).raw_value()) return;
 
+    _bytes_in_flight -= ackno.raw_value() - _ackno;
+
+    bool ack_new_data = false;
+    if (ackno.raw_value() - _ackno > 0) ack_new_data = true;
 
     while (_outstanding_segs.front().header().seqno.raw_value()+_outstanding_segs.front().length_in_sequence_space() <= ackno.raw_value())
     {   
-        ack_new_data = true;
-
-        _bytes_in_flight -= _outstanding_segs.front().length_in_sequence_space();//!nor right
-
+        _send_ms = 0;
         _outstanding_segs.pop();
-        _rto = _initial_retransmission_timeout;
         if (_outstanding_segs.empty()) break;
     }
     
-    if (!_outstanding_segs.empty() && ackno.raw_value() > _outstanding_segs.front().header().seqno.raw_value())
-    {
-        _bytes_in_flight -= ackno.raw_value()-_outstanding_segs.front().header().seqno.raw_value();
-    }
-
-    if (_outstanding_segs.empty() && ack_new_data) {
-        _timer_running = false;
-        _send_ms = 0;
-        return;
-    }
+    // if (!_outstanding_segs.empty() && ackno.raw_value() > _outstanding_segs.front().header().seqno.raw_value())
+    // {
+    //     _bytes_in_flight -= ackno.raw_value()-_outstanding_segs.front().header().seqno.raw_value();
+    // }
+     
     if (ack_new_data){
-        _timer_running = true;
+        _rto = _initial_retransmission_timeout;
         _consecutive_retransmissions_nums = 0;
     }
+
+    _ackno = ackno.raw_value();
+    _window_size = window_size;
+
+    if (_outstanding_segs.empty()) {
+        _timer_running = false;
+    }else if (ack_new_data)
+    {
+        _timer_running = true;
+    }    
  }
 
 //! \param[in] ms_since_last_tick the number of milliseconds since the last call to this method
@@ -113,14 +121,14 @@ void TCPSender::tick(const size_t ms_since_last_tick) {
     if (!_timer_running)  return;
     _send_ms += ms_since_last_tick;
     //TODO: resend here
-    if (_send_ms > _rto)
-    {
+    if (_send_ms >= _rto)
+    {   
         _segments_out.push(_outstanding_segs.front());
-        if (_window_size > 0)
-        {
-            _consecutive_retransmissions_nums++;
-            _rto *= 2;
-        }
+        // if (_window_size > 0)
+        // {
+        _consecutive_retransmissions_nums++;//TODO:here may be some error,may be two window
+        _rto *= 2;
+        // }
         _send_ms = 0;
     }
 }

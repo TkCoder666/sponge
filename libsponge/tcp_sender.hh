@@ -50,6 +50,8 @@ class TCPSender {
 
     unsigned int _rto;
 
+    bool _finish = false;
+
   public:
     //! Initialize a TCPSender
     TCPSender(const size_t capacity = TCPConfig::DEFAULT_CAPACITY,
