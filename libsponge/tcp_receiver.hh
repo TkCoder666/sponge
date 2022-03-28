@@ -21,7 +21,7 @@ class TCPReceiver {
     //! The maximum number of bytes we'll store.
     size_t _capacity;
     bool _syn = false;
-    bool _fin = true; //TODOthis may be something wrong,do you know,do we really need it? that's a question.
+    bool _fin = true; 
     uint32_t _isn = 0;
     uint64_t _checkpoint = 0;
   public:

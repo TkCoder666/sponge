@@ -1,8 +1,13 @@
 #include "tcp_sender.hh"
 
+#include "buffer.hh"
 #include "tcp_config.hh"
+#include "tcp_segment.hh"
+#include "wrapping_integers.hh"
 
+#include <cstdint>
 #include <random>
+#include <utility>
 
 // Dummy implementation of a TCP sender
 
@@ -20,19 +25,95 @@ using namespace std;
 TCPSender::TCPSender(const size_t capacity, const uint16_t retx_timeout, const std::optional<WrappingInt32> fixed_isn)
     : _isn(fixed_isn.value_or(WrappingInt32{random_device()()}))
     , _initial_retransmission_timeout{retx_timeout}
-    , _stream(capacity) {}
+    , _stream(capacity), _rto(retx_timeout) {}
 
-uint64_t TCPSender::bytes_in_flight() const { return {}; }
+uint64_t TCPSender::bytes_in_flight() const { 
+    return _bytes_in_flight;
+}
 
-void TCPSender::fill_window() {}
+void TCPSender::fill_window() {
+    TCPSegment seg;
+    string pay_load;
+    uint16_t bytes_for_sending = min(_window_size,static_cast<uint16_t>(TCPConfig::MAX_PAYLOAD_SIZE));
+    bytes_for_sending = max(bytes_for_sending,static_cast<uint16_t>(1));//TODO:deal window as 1 if it's 0
+    if (next_seqno_absolute() == 0) {
+        seg.header().syn = true;
+        pay_load = _stream.read(bytes_for_sending-1); //!consider syn here
+    }else {
+        pay_load = _stream.read(bytes_for_sending);    
+    }
+
+    seg.header().seqno = wrap(next_seqno_absolute(), _isn);
+
+    Buffer buffer(std::move(pay_load));
+    seg.parse(buffer);
+    if (_stream.input_ended() && seg.length_in_sequence_space() < bytes_for_sending){
+        seg.header().fin = true;
+    } 
+    _next_seqno += seg.length_in_sequence_space();
+    _bytes_in_flight += seg.length_in_sequence_space();
+    _segments_out.push(seg);
+    _outstanding_segs.push(seg);
+    //TODO:set time with some flag here,do you know
+    _send_ms = 0;//!a flag?
+    _timer_running = true;
+
+}
 
 //! \param ackno The remote receiver's ackno (acknowledgment number)
 //! \param window_size The remote receiver's advertised window size
-void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_size) { DUMMY_CODE(ackno, window_size); }
+void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_size) { 
+    _ackno = ackno.raw_value();
+    _window_size = window_size;
+    //!here is to pop out outstanding data,do you know
+    //!ackno next 
+    //?acknowledges the successful receipt of new data
+    bool ack_new_data = false;
+    while (_outstanding_segs.front().header().seqno.raw_value()+_outstanding_segs.front().length_in_sequence_space() <= ackno.raw_value())
+    {   
+        ack_new_data = true;
+        
+        _bytes_in_flight -= _outstanding_segs.front().length_in_sequence_space();
+
+        _outstanding_segs.pop();
+        _rto = _initial_retransmission_timeout;
+        if (_outstanding_segs.empty()) break;
+    }
+    
+    if (_outstanding_segs.empty() && ack_new_data) {
+        _timer_running = false;
+        _send_ms = 0;
+        return;
+    }
+    if (ack_new_data){
+        _timer_running = true;
+        _consecutive_retransmissions_nums = 0;
+    }
+ }
 
 //! \param[in] ms_since_last_tick the number of milliseconds since the last call to this method
-void TCPSender::tick(const size_t ms_since_last_tick) { DUMMY_CODE(ms_since_last_tick); }
+void TCPSender::tick(const size_t ms_since_last_tick) {
+    if (!_timer_running)  return;
+    _send_ms += ms_since_last_tick;
+    //TODO: resend here
+    if (_send_ms > _rto)
+    {
+        _segments_out.push(_outstanding_segs.front());
+        if (_window_size > 0)
+        {
+            _consecutive_retransmissions_nums++;
+            _rto *= 2;
+        }
+        _send_ms = 0;
+    }
+}
 
-unsigned int TCPSender::consecutive_retransmissions() const { return {}; }
+unsigned int TCPSender::consecutive_retransmissions() const { 
+    return _consecutive_retransmissions_nums;    
+}
 
-void TCPSender::send_empty_segment() {}
+void TCPSender::send_empty_segment() {
+    TCPSegment seg;
+    seg.header().seqno = wrap(_next_seqno,_isn); //TODO:how to set seqno here
+    _segments_out.push(seg);
+}

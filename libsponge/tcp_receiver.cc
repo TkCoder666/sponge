@@ -33,19 +33,17 @@ void TCPReceiver::segment_received(const TCPSegment &seg) {
     // uint32_t window_start = ackno()->raw_value();
     // uint32_t window_end = ackno()->raw_value() + window_size(); //1 or something
     // uint32_t seqno_start = header.seqno.raw_value();
-    // uint32_t seqno_end = seqno_start + seg.length_in_sequence_space(); //TODO:minu 1
+    // uint32_t seqno_end = seqno_start + seg.length_in_sequence_space(); 
 
     // if (seqno_end < window_start || seqno_start > window_end ) return false; //!seqno =0 and window = 0
 
     Buffer payload =  seg.payload();
     string data = payload.copy();
 
-    //TODO:fix checkpoint bug? maybe
     uint64_t abs_seqno = unwrap(header.seqno, WrappingInt32(_isn), _checkpoint);
     if (header.syn) abs_seqno++;
     _reassembler.push_substring(data, abs_seqno - 1,header.fin);
     
-    // return true;//TODO:window and 
     
 }
 
@@ -54,7 +52,6 @@ optional<WrappingInt32> TCPReceiver::ackno() const {
     if (!_syn) return optional<WrappingInt32>();
     else {
         uint64_t index_needed = _reassembler.head_index(); 
-        //TODO:do not change public  interface，应该是已经根据层与层的关系抽象好了，
         if (_reassembler.input_ended()) index_needed +=1;
         return wrap(index_needed + 1, WrappingInt32(_isn));
     }
