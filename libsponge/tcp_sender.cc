@@ -52,7 +52,7 @@ void TCPSender::fill_window() {
         string pay_load;
         // uint16_t bytes_for_sending = min(_window_size,static_cast<uint16_t>(TCPConfig::MAX_PAYLOAD_SIZE));
         // uint16_t seg_window_size = max(bytes_for_sending,_window_size);
-        // bytes_for_sending = max(bytes_for_sending,static_cast<uint16_t>(1));//TODO:deal window as 1 if it's 0
+        // bytes_for_sending = max(bytes_for_sending,static_cast<uint16_t>(1));
         //!we should discuss here
         //!two pay_load_size and window_size-->two 
  
@@ -88,7 +88,7 @@ void TCPSender::fill_window() {
 
         if (seg.header().syn) seg_window+=1;
         seg_window -= seg.length_in_sequence_space();
-        _window_size = seg_window; //TODO:here may be some problems
+        _window_size = seg_window; 
 
         _timer_running = true;
     }
@@ -134,7 +134,6 @@ void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
     _ack_window_size = window_size;
 
     _new_ack = true;
-    //TODO:here may be some problems
 
     if (_outstanding_segs.empty()) {
         _timer_running = false;
@@ -148,13 +147,12 @@ void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
 void TCPSender::tick(const size_t ms_since_last_tick) {
     if (!_timer_running)  return;
     _send_ms += ms_since_last_tick;
-    //TODO: resend here
     if (_send_ms >= _rto)
     {   
         _segments_out.push(_outstanding_segs.front());
         if (_ack_window_size > 0 || _new_ack) //true or false 
         {
-            _consecutive_retransmissions_nums++;//TODO:here may be some error,may be two window
+            _consecutive_retransmissions_nums++;
             _rto *= 2;
         }
         _send_ms = 0;
@@ -167,6 +165,6 @@ unsigned int TCPSender::consecutive_retransmissions() const {
 
 void TCPSender::send_empty_segment() {
     TCPSegment seg;
-    seg.header().seqno = wrap(_next_seqno,_isn); //TODO:how to set seqno here
+    seg.header().seqno = wrap(_next_seqno,_isn); 
     _segments_out.push(seg);
 }
