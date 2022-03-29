@@ -5,6 +5,7 @@
 #include "tcp_segment.hh"
 #include "wrapping_integers.hh"
 
+#include <algorithm>
 #include <cstdint>
 #include <random>
 #include <utility>
@@ -32,29 +33,45 @@ uint64_t TCPSender::bytes_in_flight() const {
 }
 
 void TCPSender::fill_window() {
+
+    uint16_t seg_window = 0;
+
+    if (_new_ack) 
+    {
+        _window_size = max(_window_size, static_cast<uint16_t>(1));//!fuck here
+        _window_size -= wrap(next_seqno_absolute(), _isn).raw_value() - _ackno;
+        _new_ack = false;
+    }
+
+    seg_window = _window_size;
     while (true)
     {
         if (_finish) return;
+
         TCPSegment seg;
         string pay_load;
-        uint16_t bytes_for_sending = min(_window_size,static_cast<uint16_t>(TCPConfig::MAX_PAYLOAD_SIZE));
+        // uint16_t bytes_for_sending = min(_window_size,static_cast<uint16_t>(TCPConfig::MAX_PAYLOAD_SIZE));
+        // uint16_t seg_window_size = max(bytes_for_sending,_window_size);
         // bytes_for_sending = max(bytes_for_sending,static_cast<uint16_t>(1));//TODO:deal window as 1 if it's 0
-        
+        //!we should discuss here
+        //!two pay_load_size and window_size-->two 
+ 
         if (next_seqno_absolute() == 0) {
             seg.header().syn = true;
-            pay_load = _stream.read(bytes_for_sending-1); //!consider syn here
+            // pay_load = _stream.read(bytes_for_sending-1); //!consider syn here
+            seg_window--; 
             _ackno = _isn.raw_value();//!init _ackno
-        }else {
-            pay_load = _stream.read(bytes_for_sending);    
         }
-
+        pay_load = _stream.read(min(seg_window,static_cast<uint16_t>(TCPConfig::MAX_PAYLOAD_SIZE)));    
+        
+        
         seg.header().seqno = wrap(next_seqno_absolute(), _isn);
 
         // Buffer buffer(std::move(pay_load)); //!error how to init?
 
         seg.payload() = Buffer(std::move(pay_load));
 
-        if (_stream.eof() && seg.length_in_sequence_space() < bytes_for_sending){
+        if (_stream.eof() && seg.length_in_sequence_space() < seg_window){
             
             seg.header().fin = true;
             _finish = true;
@@ -68,7 +85,11 @@ void TCPSender::fill_window() {
         _bytes_in_flight += seg.length_in_sequence_space();
         _segments_out.push(seg);
         _outstanding_segs.push(seg);
-        _window_size -= seg.length_in_sequence_space();
+
+        if (seg.header().syn) seg_window+=1;
+        seg_window -= seg.length_in_sequence_space();
+        _window_size = seg_window; //TODO:here may be some problems
+
         _timer_running = true;
     }
 }
@@ -105,7 +126,10 @@ void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
     }
 
     _ackno = ackno.raw_value();
+
     _window_size = window_size;
+    _new_ack = true;
+    //TODO:here may be some problems
 
     if (_outstanding_segs.empty()) {
         _timer_running = false;
