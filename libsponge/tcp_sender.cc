@@ -103,6 +103,8 @@ void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
     //!using a flag to do so,do you know to judge eof
     if (ackno.raw_value() > wrap(next_seqno_absolute(), _isn).raw_value()) return;
 
+    if (ackno.raw_value() < _ackno) return; //!may be repeated numbers but to tell bigger window,do you know
+
     _bytes_in_flight -= ackno.raw_value() - _ackno;
 
     bool ack_new_data = false;
