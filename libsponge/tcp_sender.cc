@@ -128,6 +128,9 @@ void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
     _ackno = ackno.raw_value();
 
     _window_size = window_size;
+    
+    _ack_window_size = window_size;
+
     _new_ack = true;
     //TODO:here may be some problems
 
@@ -147,11 +150,11 @@ void TCPSender::tick(const size_t ms_since_last_tick) {
     if (_send_ms >= _rto)
     {   
         _segments_out.push(_outstanding_segs.front());
-        // if (_window_size > 0)
-        // {
-        _consecutive_retransmissions_nums++;//TODO:here may be some error,may be two window
-        _rto *= 2;
-        // }
+        if (_ack_window_size > 0 || _new_ack) //true or false 
+        {
+            _consecutive_retransmissions_nums++;//TODO:here may be some error,may be two window
+            _rto *= 2;
+        }
         _send_ms = 0;
     }
 }

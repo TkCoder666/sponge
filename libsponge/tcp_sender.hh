@@ -53,6 +53,8 @@ class TCPSender {
     bool _finish = false;
 
     bool _new_ack = false;
+
+    uint16_t _ack_window_size = {1};
   public:
     //! Initialize a TCPSender
     TCPSender(const size_t capacity = TCPConfig::DEFAULT_CAPACITY,
