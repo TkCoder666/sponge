@@ -32,46 +32,45 @@ uint64_t TCPSender::bytes_in_flight() const {
 }
 
 void TCPSender::fill_window() {
-
-    if (_finish) return;
-
-    TCPSegment seg;
-    string pay_load;
-    uint16_t bytes_for_sending = min(_window_size,static_cast<uint16_t>(TCPConfig::MAX_PAYLOAD_SIZE));
-    // bytes_for_sending = max(bytes_for_sending,static_cast<uint16_t>(1));//TODO:deal window as 1 if it's 0
-    
-    if (next_seqno_absolute() == 0) {
-        seg.header().syn = true;
-        pay_load = _stream.read(bytes_for_sending-1); //!consider syn here
-        _ackno = _isn.raw_value();//!init _ackno
-    }else {
-        pay_load = _stream.read(bytes_for_sending);    
-    }
-
-    seg.header().seqno = wrap(next_seqno_absolute(), _isn);
-
-    // Buffer buffer(std::move(pay_load)); //!error how to init?
-
-    seg.payload() = Buffer(std::move(pay_load));
-
-    if (_stream.eof() && seg.length_in_sequence_space() < bytes_for_sending){
+    while (true)
+    {
+        if (_finish) return;
+        TCPSegment seg;
+        string pay_load;
+        uint16_t bytes_for_sending = min(_window_size,static_cast<uint16_t>(TCPConfig::MAX_PAYLOAD_SIZE));
+        // bytes_for_sending = max(bytes_for_sending,static_cast<uint16_t>(1));//TODO:deal window as 1 if it's 0
         
-        seg.header().fin = true;
-        _finish = true;
-    } 
+        if (next_seqno_absolute() == 0) {
+            seg.header().syn = true;
+            pay_load = _stream.read(bytes_for_sending-1); //!consider syn here
+            _ackno = _isn.raw_value();//!init _ackno
+        }else {
+            pay_load = _stream.read(bytes_for_sending);    
+        }
 
-    // cout << "the length is "<<seg.length_in_sequence_space()<<endl;
-    if (seg.length_in_sequence_space() == 0) 
-        return; 
+        seg.header().seqno = wrap(next_seqno_absolute(), _isn);
 
-    _next_seqno += seg.length_in_sequence_space();
-    _bytes_in_flight += seg.length_in_sequence_space();
-    _segments_out.push(seg);
-    _outstanding_segs.push(seg);
-    _window_size -= seg.length_in_sequence_space();
-    //TODO:set time with some flag here,do you know
-    _timer_running = true;
+        // Buffer buffer(std::move(pay_load)); //!error how to init?
 
+        seg.payload() = Buffer(std::move(pay_load));
+
+        if (_stream.eof() && seg.length_in_sequence_space() < bytes_for_sending){
+            
+            seg.header().fin = true;
+            _finish = true;
+        } 
+
+        // cout << "the length is "<<seg.length_in_sequence_space()<<endl;
+        if (seg.length_in_sequence_space() == 0) 
+            return; 
+
+        _next_seqno += seg.length_in_sequence_space();
+        _bytes_in_flight += seg.length_in_sequence_space();
+        _segments_out.push(seg);
+        _outstanding_segs.push(seg);
+        _window_size -= seg.length_in_sequence_space();
+        _timer_running = true;
+    }
 }
 
 //! \param ackno The remote receiver's ackno (acknowledgment number)
