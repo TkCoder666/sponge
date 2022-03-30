@@ -32,13 +32,17 @@ size_t TCPConnection::time_since_last_segment_received() const {
     return _time_since_last_segment_received;
 }
 
-void TCPConnection::send_segments(bool with_rst)
+void TCPConnection::send_segments(bool empty_seg,bool with_rst)
 {   
-    if (with_rst)
+    if (with_rst || empty_seg)
     {
         _sender.send_empty_segment();
     }else {
         _sender.fill_window();
+    }
+
+    if (_sender.segments_out().empty()){
+        _sender.send_empty_segment();
     }
 
     while (!_sender.segments_out().empty()) {
@@ -90,7 +94,7 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
 
     if (seg.length_in_sequence_space() > 0)
     {
-        send_segments();
+        send_segments(); //!send and we must send,fuck
     }
 
 
@@ -98,8 +102,7 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
     if (_receiver.ackno().has_value() and (seg.length_in_sequence_space() == 0)
         and seg.header().seqno == _receiver.ackno().value() - 1) 
     {
-        _sender.send_empty_segment(); 
-        send_segments(); //TODO:here use this method may be wrong
+        send_segments(true); //TODO:here use this method may be wrong
     }  
 
 }
@@ -130,7 +133,7 @@ void TCPConnection::tick(const size_t ms_since_last_tick) {
         _inbound_stream.set_error();
         _outbound_stream.set_error();
         _active_or_not = false;
-        send_segments(true);
+        send_segments(false,true);
     }
     
     if (_inbound_stream.eof() && !_outbound_stream.eof()){ //TODO:!here may be some problems
@@ -170,7 +173,7 @@ TCPConnection::~TCPConnection() {
     try {
         if (active()) {
             cerr << "Warning: Unclean shutdown of TCPConnection\n";
-            send_segments(true);
+            send_segments(false,true);
             // Your code here: need to send a RST segment to the peer
         }
     } catch (const exception &e) {

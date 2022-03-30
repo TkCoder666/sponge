@@ -25,7 +25,7 @@ class TCPConnection {
 
     bool _active_or_not{true};
 
-    void send_segments(bool with_rst = false);
+    void send_segments(bool empty_seg = false,bool with_rst = false );
 
   public:
     //! \name "Input" interface for the writer
