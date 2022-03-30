@@ -1,10 +1,12 @@
 #ifndef SPONGE_LIBSPONGE_TCP_FACTORED_HH
 #define SPONGE_LIBSPONGE_TCP_FACTORED_HH
 
+#include "byte_stream.hh"
 #include "tcp_config.hh"
 #include "tcp_receiver.hh"
 #include "tcp_sender.hh"
 #include "tcp_state.hh"
+#include <cstddef>
 
 //! \brief A complete endpoint of a TCP connection
 class TCPConnection {
@@ -12,14 +14,18 @@ class TCPConnection {
     TCPConfig _cfg;
     TCPReceiver _receiver{_cfg.recv_capacity};
     TCPSender _sender{_cfg.send_capacity, _cfg.rt_timeout, _cfg.fixed_isn};
-
+    ByteStream &_inbound_stream = _receiver.stream_out(),& _outbound_stream = _sender.stream_in();
     //! outbound queue of segments that the TCPConnection wants sent
     std::queue<TCPSegment> _segments_out{};
-
+    size_t _time_since_last_segment_received{0};
     //! Should the TCPConnection stay active (and keep ACKing)
     //! for 10 * _cfg.rt_timeout milliseconds after both streams have ended,
     //! in case the remote TCPConnection doesn't know we've received its whole stream?
     bool _linger_after_streams_finish{true};
+
+    bool _active_or_not{true};
+
+    void send_segments(bool with_rst = false);
 
   public:
     //! \name "Input" interface for the writer
@@ -38,6 +44,8 @@ class TCPConnection {
     //! \brief Shut down the outbound byte stream (still allows reading incoming data)
     void end_input_stream();
     //!@}
+
+
 
     //! \name "Output" interface for the reader
     //!@{

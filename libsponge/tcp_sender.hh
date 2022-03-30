@@ -55,6 +55,8 @@ class TCPSender {
     bool _new_ack = false;
 
     uint16_t _ack_window_size = {1};
+
+    bool _fin_acked = false;
   public:
     //! Initialize a TCPSender
     TCPSender(const size_t capacity = TCPConfig::DEFAULT_CAPACITY,
@@ -109,7 +111,12 @@ class TCPSender {
 
     //! \brief relative seqno for the next byte to be sent
     WrappingInt32 next_seqno() const { return wrap(_next_seqno, _isn); }
-    //!@}
+
+
+    bool send_finish() const  {return _finish;}
+
+    bool fin_acked() const { return _fin_acked;}
+    //!@} 
 };
 
 #endif  // SPONGE_LIBSPONGE_TCP_SENDER_HH
