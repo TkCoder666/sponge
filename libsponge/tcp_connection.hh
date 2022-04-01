@@ -27,6 +27,8 @@ class TCPConnection {
 
     void send_segments(bool empty_seg = false,bool with_rst = false );
 
+
+    void move_seg_from_sender(bool with_rst);
   public:
     //! \name "Input" interface for the writer
     //!@{

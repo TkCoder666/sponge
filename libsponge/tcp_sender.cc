@@ -112,10 +112,10 @@ void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
     bool ack_new_data = false;
     if (ackno.raw_value() - _ackno > 0) ack_new_data = true;
 
-    while (_outstanding_segs.front().header().seqno.raw_value()+_outstanding_segs.front().length_in_sequence_space() <= ackno.raw_value())
+    while (!_outstanding_segs.empty() && _outstanding_segs.front().header().seqno.raw_value()+_outstanding_segs.front().length_in_sequence_space() <= ackno.raw_value())
     {   
         _send_ms = 0;
-        _outstanding_segs.pop();
+        _outstanding_segs.pop(); 
         if (_outstanding_segs.empty()) break;
     }
     

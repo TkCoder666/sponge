@@ -32,19 +32,8 @@ size_t TCPConnection::time_since_last_segment_received() const {
     return _time_since_last_segment_received;
 }
 
-void TCPConnection::send_segments(bool empty_seg,bool with_rst)
-{   
-    if (with_rst || empty_seg)
-    {
-        _sender.send_empty_segment();
-    }else {
-        _sender.fill_window();
-    }
-
-    if (_sender.segments_out().empty()){
-        _sender.send_empty_segment();
-    }
-
+void TCPConnection::move_seg_from_sender(bool with_rst)
+{
     while (!_sender.segments_out().empty()) {
 
         TCPSegment & seg = _sender.segments_out().front();//!here may be wrong
@@ -69,6 +58,22 @@ void TCPConnection::send_segments(bool empty_seg,bool with_rst)
 
         _segments_out.push(seg);
     }
+}
+
+void TCPConnection::send_segments(bool empty_seg,bool with_rst)
+{   
+    if (with_rst || empty_seg)
+    {
+        _sender.send_empty_segment();
+    }else {
+        _sender.fill_window();
+    }
+
+    if (_sender.segments_out().empty()){
+        _sender.send_empty_segment();
+    }
+
+    move_seg_from_sender(with_rst);
 }
 
 void TCPConnection::segment_received(const TCPSegment &seg) { 
@@ -127,6 +132,9 @@ void TCPConnection::tick(const size_t ms_since_last_tick) {
     _time_since_last_segment_received += ms_since_last_tick;
 
     _sender.tick(ms_since_last_tick);
+
+    move_seg_from_sender(false);
+    
     if (_sender.consecutive_retransmissions() >= TCPConfig::MAX_RETX_ATTEMPTS)
     {   
         //TODO:how to abort the connection?
@@ -157,6 +165,7 @@ void TCPConnection::tick(const size_t ms_since_last_tick) {
 
 void TCPConnection::end_input_stream() {
     _outbound_stream.end_input();
+    send_segments();
 }
 
 void TCPConnection::connect() {
