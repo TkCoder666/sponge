@@ -19,77 +19,102 @@ using namespace std;
 
 //!pair or set,which do you like?
 
-StreamReassembler::StreamReassembler(const size_t capacity) : _output(capacity), _capacity(capacity) {}
+StreamReassembler::StreamReassembler(const size_t capacity) : _output(capacity), _capacity(capacity) {
+    _buffer.resize(capacity);
+}
+
+long StreamReassembler::merge_block(block_node &elm1, const block_node &elm2) {
+    block_node x, y;
+    if (elm1.begin > elm2.begin) {
+        x = elm2;
+        y = elm1;
+    } else {
+        x = elm1;
+        y = elm2;
+    }
+    if (x.begin + x.length < y.begin) {
+        return -1;  // no intersection, couldn't merge
+    } else if (x.begin + x.length >= y.begin + y.length) {
+        elm1 = x;
+        return y.length;
+    } else {
+        elm1.begin = x.begin;
+        elm1.data = x.data + y.data.substr(x.begin + x.length - y.begin);
+        elm1.length = elm1.data.length();
+        return x.begin + x.length - y.begin;
+    }
+}
 
 //! \details This function accepts a substring (aka a segment) of bytes,
 //! possibly out-of-order, from the logical stream, and assembles any newly
 //! contiguous substrings and writes them into the output stream in order.
-void StreamReassembler::push_substring(const string &data, const uint64_t index, const bool eof) {
-    //!note the eof here 
-    uint64_t data_index = 0;
+void StreamReassembler::push_substring(const string &data, const size_t index, const bool eof) {
+    if (index >= _head_index + _capacity) {  // capacity over
+        return;
+    }
 
-    bool complete_flag = true;
+    // handle extra substring prefix
+    block_node elm;
+    if (index + data.length() <= _head_index) {  // couldn't equal, because there have emtpy substring
+        goto JUDGE_EOF;
+    } else if (index < _head_index) {
+        size_t offset = _head_index - index;
+        elm.data.assign(data.begin() + offset, data.end());
+        elm.begin = index + offset;
+        elm.length = elm.data.length();
+    } else {
+        elm.begin = index;
+        elm.length = data.length();
+        elm.data = data;
+    }
+    _unassembled_byte += elm.length;
 
-    for (;data_index < data.size(); data_index++) //push something out,do you know
-        //!not inserted here may be?
-    {
-        uint64_t byte_index = data_index+index;
-        if (byte_index < _index_needed ||_buffer.count(byte_index) > 0) //!note the condition here 
-        {
-            continue;
-        }else if (byte_index >= _index_needed + _capacity - _output.buffer_size())
-        {   
-            complete_flag = false;
-            continue;
+    // merge substring
+    do {
+        // merge next
+        long merged_bytes = 0;
+        auto iter = _blocks.lower_bound(elm);
+        while (iter != _blocks.end() && (merged_bytes = merge_block(elm, *iter)) >= 0) {
+            _unassembled_byte -= merged_bytes;
+            _blocks.erase(iter);
+            iter = _blocks.lower_bound(elm);
         }
-        else
-        {
-            _buffer.insert(pair<uint64_t,char>(byte_index, data[data_index]));
+        // merge prev
+        if (iter == _blocks.begin()) {
+            break;
         }
+        iter--;
+        while ((merged_bytes = merge_block(elm, *iter)) >= 0) {
+            _unassembled_byte -= merged_bytes;
+            _blocks.erase(iter);
+            iter = _blocks.lower_bound(elm);
+            if (iter == _blocks.begin()) {
+                break;
+            }
+            iter--;
+        }
+    } while (false);
+    _blocks.insert(elm);
+
+    // write to ByteStream
+    if (!_blocks.empty() && _blocks.begin()->begin == _head_index) {
+        const block_node head_block = *_blocks.begin();
+        // modify _head_index and _unassembled_byte according to successful write to _output
+        size_t write_bytes = _output.write(head_block.data);
+        _head_index += write_bytes;
+        _unassembled_byte -= write_bytes;
+        _blocks.erase(_blocks.begin());
     }
 
-    
-    if (data_index == data.size() && eof && complete_flag) _eof = true; 
-    
-    auto it = _buffer.begin();
-
-    string bytes_for_write = "";
-
-    uint64_t tmp_index = _index_needed;
-    while (it != _buffer.end() && it->first == tmp_index)
-    {
-        bytes_for_write += it->second;
-        it = _buffer.erase(it); 
-        tmp_index++; 
+JUDGE_EOF:
+    if (eof) {
+        _eof_flag = true;
     }
-
-    size_t before_write = _output.bytes_written();
-    _output.write(bytes_for_write);
-    size_t after_write = _output.bytes_written();
-    _index_needed += after_write - before_write;
-
-    if (_output.remaining_capacity() == 0)
-    {
-        _buffer.clear();
-    } 
-    if (_eof)
-    {
-        if (tmp_index > _index_needed) _eof = false; //!here is not right,fuck
-    }
-
-    if (_eof && empty()){
+    if (_eof_flag && empty()) {
         _output.end_input();
     }
-
 }
 
-size_t StreamReassembler::unassembled_bytes() const { 
-    return _buffer.size();
- }
+size_t StreamReassembler::unassembled_bytes() const { return _unassembled_byte; }
 
-bool StreamReassembler::empty() const { 
-    return unassembled_bytes() == 0;
- }
-size_t StreamReassembler::remaining_size() const{
-    return _capacity - _buffer.size() - _output.buffer_size();
-}
+bool StreamReassembler::empty() const { return _unassembled_byte == 0; }
