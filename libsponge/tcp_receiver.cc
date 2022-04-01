@@ -42,7 +42,10 @@ void TCPReceiver::segment_received(const TCPSegment &seg) {
 
     uint64_t abs_seqno = unwrap(header.seqno, WrappingInt32(_isn), _checkpoint);
     if (header.syn) abs_seqno++;
+
+    if (abs_seqno == 0) return;
     _reassembler.push_substring(data, abs_seqno - 1,header.fin);
+    //!here deal with seg that exceed the window,do you know
     
     
 }

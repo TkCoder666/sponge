@@ -28,22 +28,28 @@ void StreamReassembler::push_substring(const string &data, const uint64_t index,
     //!note the eof here 
     uint64_t data_index = 0;
 
+    bool complete_flag = true;
 
     for (;data_index < data.size(); data_index++) //push something out,do you know
         //!not inserted here may be?
     {
         uint64_t byte_index = data_index+index;
-        if (byte_index < _index_needed || _buffer.count(byte_index) > 0) //!note the condition here 
+        if (byte_index < _index_needed ||_buffer.count(byte_index) > 0) //!note the condition here 
         {
             continue;
-        }else
+        }else if (byte_index >= _index_needed + _capacity - _output.buffer_size())
+        {   
+            complete_flag = false;
+            continue;
+        }
+        else
         {
             _buffer.insert(pair<uint64_t,char>(byte_index, data[data_index]));
         }
     }
 
     
-    if (data_index == data.size() && eof) _eof = true; 
+    if (data_index == data.size() && eof && complete_flag) _eof = true; 
     
     auto it = _buffer.begin();
 
@@ -68,7 +74,7 @@ void StreamReassembler::push_substring(const string &data, const uint64_t index,
     } 
     if (_eof)
     {
-        if (tmp_index > _index_needed) _eof = false;
+        if (tmp_index > _index_needed) _eof = false; //!here is not right,fuck
     }
 
     if (_eof && empty()){

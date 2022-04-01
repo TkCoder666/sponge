@@ -47,7 +47,10 @@ class TCPConnection {
     void end_input_stream();
     //!@}
 
-
+    void clear_segments_out() {
+      std::queue<TCPSegment> empty{};
+      std::swap(empty,_segments_out);
+    }
 
     //! \name "Output" interface for the reader
     //!@{

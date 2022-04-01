@@ -64,6 +64,10 @@ void TCPConnection::send_segments(bool empty_seg,bool with_rst)
 {   
     if (with_rst || empty_seg)
     {
+        if (with_rst) {
+            _sender.clear_segments_out();
+            clear_segments_out();
+        }
         _sender.send_empty_segment();
     }else {
         _sender.fill_window();
@@ -88,6 +92,9 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
 
     _receiver.segment_received(seg);
 
+    if (_inbound_stream.eof() && !_outbound_stream.eof()){ //TODO:!here may be some problems
+        _linger_after_streams_finish = false;
+    } 
 
     //!if the ack flag is set, tells the TCPSender
     if (seg.header().ack)
@@ -133,9 +140,10 @@ void TCPConnection::tick(const size_t ms_since_last_tick) {
 
     _sender.tick(ms_since_last_tick);
 
-    move_seg_from_sender(false);
+    if (_outbound_stream.buffer_empty()) move_seg_from_sender(false);
+    else send_segments();
     
-    if (_sender.consecutive_retransmissions() >= TCPConfig::MAX_RETX_ATTEMPTS)
+    if (_sender.consecutive_retransmissions() > TCPConfig::MAX_RETX_ATTEMPTS) //!here ?
     {   
         //TODO:how to abort the connection?
         _inbound_stream.set_error();
@@ -144,9 +152,7 @@ void TCPConnection::tick(const size_t ms_since_last_tick) {
         send_segments(false,true);
     }
     
-    if (_inbound_stream.eof() && !_outbound_stream.eof()){ //TODO:!here may be some problems
-        _linger_after_streams_finish = false;
-    }
+    
 
     if (_sender.fin_acked() && _receiver.receive_finish()){
         if (!_linger_after_streams_finish)

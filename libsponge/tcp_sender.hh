@@ -116,6 +116,11 @@ class TCPSender {
     bool send_finish() const  {return _finish;}
 
     bool fin_acked() const { return _fin_acked;}
+
+    void clear_segments_out() {
+      std::queue<TCPSegment> empty{};
+      std::swap(empty,_segments_out);
+    }
     //!@} 
 };
 
